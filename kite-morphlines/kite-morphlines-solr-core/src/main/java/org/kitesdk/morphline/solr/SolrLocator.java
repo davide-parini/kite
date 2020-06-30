@@ -20,6 +20,11 @@ import java.io.IOException;
 
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.client.solrj.impl.CloudSolrServer;
@@ -100,7 +105,34 @@ public class SolrLocator {
       }
       int solrServerNumThreads = 2;
       int solrServerQueueLength = solrServerNumThreads;
-      SolrServer server = new SafeConcurrentUpdateSolrServer(solrUrl, solrServerQueueLength, solrServerNumThreads);
+
+      SolrServer server;
+
+      /*
+       * Inizializza il client Solr con autenticazione se necessario.
+       */
+      String basicauth = System.getProperty("basicauth");
+      if (basicauth != null) {
+          HttpClientBuilder builder = HttpClientBuilder.create();
+          String[] authParts = basicauth.split(":");
+          if (authParts.length != 2) {
+              String msg = "Invalid value for \"basicauth\": " + basicauth;
+              LOG.error(msg);
+              throw new RuntimeException(msg);
+          }
+          String user = authParts[0];
+          String password = authParts[1];
+          LOG.info("Solr client credentials found for user: {}", user);
+          CredentialsProvider provider = new BasicCredentialsProvider();
+          UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(user, password);
+          provider.setCredentials(AuthScope.ANY, credentials);
+          builder.addInterceptorFirst(new PreemptiveAuthInterceptor()).setDefaultCredentialsProvider(provider);
+          server = new SafeConcurrentUpdateSolrServer(solrUrl, builder.build(), solrServerQueueLength, solrServerNumThreads);
+      } else {
+          LOG.warn("System property \"basicauth\" not set: no authentication will be used to call Solr!");
+          server = new SafeConcurrentUpdateSolrServer(solrUrl, solrServerQueueLength, solrServerNumThreads);
+      }
+
       return server;
     }
   }
