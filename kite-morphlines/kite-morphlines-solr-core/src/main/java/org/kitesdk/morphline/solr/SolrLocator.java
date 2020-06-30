@@ -24,7 +24,6 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.client.solrj.impl.CloudSolrServer;
@@ -85,6 +84,7 @@ public class SolrLocator {
     configs.validateArguments(config);
   }
   
+  @SuppressWarnings("deprecation")
   public SolrServer getSolrServer() {
     if (zkHost != null && zkHost.length() > 0) {
       if (collectionName == null || collectionName.length() == 0) {
@@ -113,7 +113,6 @@ public class SolrLocator {
        */
       String basicauth = System.getProperty("basicauth");
       if (basicauth != null) {
-          HttpClientBuilder builder = HttpClientBuilder.create();
           String[] authParts = basicauth.split(":");
           if (authParts.length != 2) {
               String msg = "Invalid value for \"basicauth\": " + basicauth;
@@ -126,8 +125,10 @@ public class SolrLocator {
           CredentialsProvider provider = new BasicCredentialsProvider();
           UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(user, password);
           provider.setCredentials(AuthScope.ANY, credentials);
-          builder.addInterceptorFirst(new PreemptiveAuthInterceptor()).setDefaultCredentialsProvider(provider);
-          server = new SafeConcurrentUpdateSolrServer(solrUrl, builder.build(), solrServerQueueLength, solrServerNumThreads);
+          org.apache.http.impl.client.DefaultHttpClient client = new org.apache.http.impl.client.DefaultHttpClient();
+          client.addRequestInterceptor(new PreemptiveAuthInterceptor(), 0);
+          client.setCredentialsProvider(provider);
+          server = new SafeConcurrentUpdateSolrServer(solrUrl, client, solrServerQueueLength, solrServerNumThreads);
       } else {
           LOG.warn("System property \"basicauth\" not set: no authentication will be used to call Solr!");
           server = new SafeConcurrentUpdateSolrServer(solrUrl, solrServerQueueLength, solrServerNumThreads);
